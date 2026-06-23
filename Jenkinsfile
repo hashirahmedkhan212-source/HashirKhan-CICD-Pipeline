@@ -1,10 +1,12 @@
 pipeline {
     agent any
-    
     tools {
         nodejs 'Node26'
     }
-    
+    environment {
+        DOCKER_IMAGE = 'hashir777/hashirkhan-cicd-project'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
     stages {
         stage('Checkout') {
             steps {
@@ -13,37 +15,45 @@ pipeline {
         }
         stage('Build') {
             steps {
-                echo 'Building Project...'
+                echo 'Building...'
                 sh 'node --version'
                 sh 'npm --version'
-                sh 'npm install'
             }
         }
         stage('Test') {
             steps {
-                echo 'Tests passed successfully!'
+                echo 'Tests passed!'
+            }
+        }
+        stage('Docker Build') {
+            steps {
+                sh 'docker build -t $DOCKER_IMAGE:$IMAGE_TAG .'
+                sh 'docker tag $DOCKER_IMAGE:$IMAGE_TAG $DOCKER_IMAGE:latest'
+            }
+        }
+        stage('Push to Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS')]) {
+                    sh 'docker login -u $DOCKER_USER -p $DOCKER_PASS'
+                    sh 'docker push $DOCKER_IMAGE:$IMAGE_TAG'
+                    sh 'docker push $DOCKER_IMAGE:latest'
+                }
             }
         }
         stage('Deploy') {
             steps {
-                // Compile the production container image
-                sh 'docker build -t hashirkhan-cicd-pipeline .'
-                echo 'Application Deployed Successfully!'
-            }
-        }
-        stage('Notify') {
-            steps {
-                echo 'Team notified of successful build!'
+                sh 'docker stop hashirkhan-cicd-project || true'
+                sh 'docker rm hashirkhan-cicd-project || true'
+                sh 'docker pull $DOCKER_IMAGE:latest'
+                sh 'docker run -d -p 3000:3000 --name hashirkhan-cicd-project $DOCKER_IMAGE:latest'
+                echo 'App live at localhost:3000!'
             }
         }
     }
-    
     post {
-        success {
-            echo 'Pipeline SUCCESS!'
-        }
-        failure {
-            echo 'Pipeline FAILED!'
-        }
+        success { echo 'Pipeline complete!' }
+        failure { echo 'Check logs!' }
     }
 }
